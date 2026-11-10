@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0A1A26">
+<title>OceanHoop Player Development</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0A1A26;--panel:#12293A;--line:#1F3D52;--foam:#E8F1F5;--mute:#8FA9B8;--ball:#F26B21;--teal:#2BB3C9;--bad:#FF7A7A;--good:#5BD6A0}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{background:var(--ink);color:var(--foam);font:16px/1.5 Barlow,system-ui,sans-serif;padding:env(safe-area-inset-top) 0 0}
+h1,h2,h3,.num{font-family:'Barlow Condensed',Impact,sans-serif;font-weight:700;letter-spacing:.01em}
+h1{font-size:34px;line-height:1.05}h2{font-size:26px;margin-bottom:12px}h3{font-size:19px;color:var(--mute);font-weight:600}
+main{max-width:560px;margin:0 auto;padding:20px 16px 110px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:12px}
+.hero{border-radius:14px;padding:20px 16px;margin-bottom:14px;background:linear-gradient(135deg,#12293A 55%,#17485A);border:1px solid var(--line)}
+.hero small{color:var(--mute)}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:12px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.stat .num{font-size:34px;line-height:1;color:var(--foam)}.stat .num.o{color:var(--ball)}.stat span{color:var(--mute);font-size:14px}
+label{display:block;font-size:14px;color:var(--mute);margin:12px 0 4px}
+input,select,textarea{width:100%;background:var(--ink);color:var(--foam);border:1px solid var(--line);border-radius:10px;padding:12px;font:inherit}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid var(--teal);outline-offset:1px}
+textarea{min-height:90px;resize:vertical}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn{width:100%;margin-top:16px;background:var(--ball);color:#fff;border:0;border-radius:10px;padding:14px;font:600 17px Barlow,sans-serif;cursor:pointer}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--foam)}
+.link{background:none;border:0;color:var(--teal);font:inherit;padding:8px 0;cursor:pointer}
+.tabs{display:flex;gap:6px;margin:16px 0}.tabs button{flex:1;padding:10px;border-radius:10px;border:1px solid var(--line);background:none;color:var(--mute);font:600 16px Barlow,sans-serif;cursor:pointer}
+.tabs button.on{background:var(--panel);color:var(--foam);border-color:var(--teal)}
+.item{display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:8px;color:inherit;font:inherit;cursor:pointer}
+.item b{display:block;text-transform:capitalize}.item small{color:var(--mute)}
+.item .num{font-size:26px;color:var(--ball)}
+.kv{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line)}.kv:last-child{border:0}.kv span{color:var(--mute)}
+.up{color:var(--good)}.down{color:var(--bad)}
+.empty{text-align:center;color:var(--mute);padding:30px 10px}
+.msg{color:var(--bad);font-size:14px;margin-top:10px;min-height:1px}.msg.ok{color:var(--good)}
+nav{position:fixed;left:0;right:0;bottom:0;background:#0D2232;border-top:1px solid var(--line);display:flex;padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
+nav button{flex:1;background:none;border:0;color:var(--mute);font:600 14px Barlow,sans-serif;padding:10px 2px;cursor:pointer}
+nav button.on{color:var(--ball)}
+nav[hidden]{display:none}
+#toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%) translateY(20px);background:var(--foam);color:var(--ink);padding:10px 16px;border-radius:10px;font-weight:600;opacity:0;transition:.25s;pointer-events:none}
+#toast.on{opacity:1;transform:translateX(-50%)}
+@media(prefers-reduced-motion:reduce){#toast{transition:none}}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<nav id="nav" hidden>
+  <button data-v="home">Home</button><button data-v="train">Train</button><button data-v="history">History</button><button data-v="report">Report</button><button data-v="profile">Profile</button>
+</nav>
+<div id="toast" role="status"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+const SUPABASE_URL='https://fnqftvpjkmcxdjfpvddp.supabase.co';
+const SUPABASE_KEY='sb_publishable_i-OS_FskAyMoDrn4Repn1A_SMx-BktM';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const $=s=>document.querySelector(s), app=$('#app');
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const TYPES=['shooting','dribbling','passing','conditioning','defense','scrimmage','other'];
+let me=null,prof=null,trs=[],recovering=false,view='home';
+
+const pct=t=>(t.shot_attempts>0&&t.shot_made!=null)?+(t.shot_made/t.shot_attempts*100).toFixed(1):null;
+const fmtDate=d=>new Date(d+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+const toast=m=>{const t=$('#toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2600)};
+const msg=(t,ok)=>{const m=$('#msg');if(m){m.textContent=t;m.className='msg'+(ok?' ok':'')}};
+const num=v=>v===''||v==null?null:Number(v);
+
+/* ---------- Auth ---------- */
+function authView(mode='login'){
+  $('#nav').hidden=true;
+  const reg=mode==='register',fg=mode==='forgot';
+  app.innerHTML=`
+  <div class="hero" style="margin-top:20px"><h1>OceanHoop<br>Player Development</h1><small>Every player has a story. Every practice makes progress.</small></div>
+  <div class="tabs"><button data-m="login" class="${mode==='login'?'on':''}">Log in</button><button data-m="register" class="${reg?'on':''}">Create account</button></div>
+  <div class="card">
+    ${reg?'<label>Full name</label><input id="name" autocomplete="name">':''}
+    <label>Email</label><input id="email" type="email" autocomplete="email">
+    ${fg?'':'<label>Password</label><input id="pw" type="password" autocomplete="'+(reg?'new':'current')+'-password" minlength="6">'}
+    <button class="btn" id="go">${reg?'Create account':fg?'Send reset link':'Log in'}</button>
+    <div id="msg" class="msg"></div>
+    ${mode==='login'?'<button class="link" id="forgot">Forgot password?</button>':''}${fg?'<button class="link" id="back">Back to log in</button>':''}
+  </div>`;
+  app.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>authView(b.dataset.m));
+  if($('#forgot'))$('#forgot').onclick=()=>authView('forgot');
+  if($('#back'))$('#back').onclick=()=>authView('login');
+  $('#go').onclick=async()=>{
+    const email=$('#email').value.trim(),pw=$('#pw')?.value;
+    if(!email)return msg('Enter your email.');
+    if(!fg&&(!pw||pw.length<6))return msg('Password needs at least 6 characters.');
+    $('#go').disabled=true;let r;
+    if(reg)r=await sb.auth.signUp({email,password:pw,options:{data:{full_name:$('#name').value.trim()}}});
+    else if(fg)r=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
+    else r=await sb.auth.signInWithPassword({email,password:pw});
+    $('#go').disabled=false;
+    if(r.error)return msg(r.error.message);
+    if(reg&&!r.data.session)msg('Check your email to confirm your account, then log in.',1);
+    if(fg)msg('Reset link sent. Check your email.',1);
+  };
+}
+function resetView(){
+  $('#nav').hidden=true;
+  app.innerHTML=`<h2 style="margin-top:30px">Set a new password</h2><div class="card"><label>New password</label><input id="pw" type="password" minlength="6" autocomplete="new-password"><button class="btn" id="go">Save password</button><div id="msg" class="msg"></div></div>`;
+  $('#go').onclick=async()=>{
+    const pw=$('#pw').value;if(pw.length<6)return msg('Password needs at least 6 characters.');
+    const{error}=await sb.auth.updateUser({password:pw});
+    if(error)return msg(error.message);
+    recovering=false;toast('Password saved');await start();
+  };
+}
+
+/* ---------- Data ---------- */
+async function load(){
+  const[p,t]=await Promise.all([
+    sb.from('profiles').select('*').eq('id',me.id).single(),
+    sb.from('trainings').select('*').eq('player_id',me.id).order('training_date',{ascending:false}).order('created_at',{ascending:false}).limit(500)]);
+  prof=p.data||{};trs=t.data||[];
+}
+async function start(){
+  const{data:{session}}=await sb.auth.getSession();
+  if(!session){me=null;return authView()}
+  me=session.user;await load();go(prof.full_name?'home':'profile');
+}
+
+/* ---------- Navigation ---------- */
+function go(v,arg){
+  view=v;$('#nav').hidden=false;window.scrollTo(0,0);
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
+  ({home:homeView,train:trainView,history:historyView,report:reportView,profile:profileView})[v](arg);
+}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>go(b.dataset.v));
+
+/* ---------- Home ---------- */
+function homeView(){
+  const done=trs.filter(t=>t.status==='completed');
+  const mins=done.reduce((a,t)=>a+t.duration_min,0);
+  const wk=new Date();wk.setDate(wk.getDate()-6);const wkS=wk.toISOString().slice(0,10);
+  const week=done.filter(t=>t.training_date>=wkS).length;
+  const A=done.reduce((a,t)=>a+(t.shot_attempts||0),0),M=done.reduce((a,t)=>a+(t.shot_made||0),0);
+  const overall=A>0?(M/A*100).toFixed(1)+'%':'–';
+  app.innerHTML=`
+  <div class="hero"><small>Welcome back</small><h1>${esc(prof.full_name||'Player')}</h1>
+  <small>${[prof.position,prof.jersey_number!=null?'#'+prof.jersey_number:'',prof.club].filter(Boolean).map(esc).join(' · ')||'Complete your profile to get started'}</small></div>
+  <button class="btn" style="margin:0 0 14px" id="start">Start new training</button>
+  <div class="stats">
+    <div class="stat"><div class="num o">${done.length}</div><span>Sessions</span></div>
+    <div class="stat"><div class="num">${(mins/60).toFixed(1)}</div><span>Hours trained</span></div>
+    <div class="stat"><div class="num">${week}</div><span>Sessions, last 7 days</span></div>
+    <div class="stat"><div class="num">${overall}</div><span>Shooting overall</span></div>
+  </div>
+  <h3>Recent training</h3><div style="margin-top:8px">${trs.length?trs.slice(0,3).map(itemHTML).join(''):'<div class="empty">No sessions yet. Log your first practice.</div>'}</div>`;
+  $('#start').onclick=()=>go('train');bindItems();
+}
+function itemHTML(t){const p=pct(t);return`<button class="item" data-id="${t.id}"><div><b>${esc(t.training_type)}</b><small>${fmtDate(t.training_date)} · ${t.duration_min} min</small></div><div class="num">${p!=null?p+'%':'›'}</div></button>`}
+function bindItems(){app.querySelectorAll('.item').forEach(b=>b.onclick=()=>go('report',b.dataset.id))}
+
+/* ---------- Train ---------- */
+function trainView(){
+  const today=new Date().toISOString().slice(0,10);
+  app.innerHTML=`<h2>New training</h2><div class="card">
+  <div class="row"><div><label>Date</label><input id="d" type="date" value="${today}"></div>
+  <div><label>Duration (min)</label><input id="dur" type="number" inputmode="numeric" min="1" max="600" placeholder="60"></div></div>
+  <label>Type</label><select id="ty">${TYPES.map(t=>`<option value="${t}">${t[0].toUpperCase()+t.slice(1)}</option>`).join('')}</select>
+  <div class="row"><div><label>Shot attempts</label><input id="a" type="number" inputmode="numeric" min="0" placeholder="optional"></div>
+  <div><label>Shots made</label><input id="m" type="number" inputmode="numeric" min="0" placeholder="optional"></div></div>
+  <label>Notes</label><textarea id="n" placeholder="What did you work on? How did it feel?"></textarea>
+  <button class="btn" id="save">Save training</button><div id="msg" class="msg"></div></div>`;
+  $('#save').onclick=async()=>{
+    const dur=num($('#dur').value),a=num($('#a').value),m=num($('#m').value);
+    if(!dur||dur<1)return msg('Enter how long you trained.');
+    if(a!=null&&m!=null&&m>a)return msg('Shots made cannot be more than attempts.');
+    if((a==null)!==(m==null))return msg('Fill in both attempts and made, or leave both empty.');
+    $('#save').disabled=true;
+    const{data,error}=await sb.from('trainings').insert({player_id:me.id,training_date:$('#d').value,duration_min:dur,training_type:$('#ty').value,shot_attempts:a,shot_made:m,notes:$('#n').value.trim()||null}).select().single();
+    $('#save').disabled=false;
+    if(error)return msg(error.message);
+    await load();toast('Training saved');go('report',data.id);
+  };
+}
+
+/* ---------- History ---------- */
+function historyView(){
+  app.innerHTML=`<h2>Training history</h2>${trs.length?trs.map(itemHTML).join(''):'<div class="empty">No sessions yet.<br>Tap Train to log your first one.</div>'}`;bindItems();
+}
+
+/* ---------- Report ---------- */
+function reportView(id){
+  const t=trs.find(x=>x.id===id)||trs[0];
+  if(!t){app.innerHTML='<h2>Player report</h2><div class="empty">Log a training to see your report.</div>';return}
+  const p=pct(t);
+  const earlier=trs.filter(x=>x.id!==t.id&&x.status==='completed'&&(x.training_date<t.training_date||(x.training_date===t.training_date&&x.created_at<t.created_at)));
+  const prevP=earlier.map(pct).filter(v=>v!=null);
+  const avg=prevP.length?prevP.reduce((a,b)=>a+b,0)/prevP.length:null;
+  let cmp='Not enough earlier shooting data to compare yet.';
+  if(p!=null&&avg!=null){const d=+(p-avg).toFixed(1);cmp=`Your average in ${prevP.length} earlier session${prevP.length>1?'s':''} was ${avg.toFixed(1)}%. This session: <b class="${d>=0?'up':'down'}">${d>=0?'+':''}${d} points</b>.`}
+  const prevDur=earlier.length?earlier.reduce((a,x)=>a+x.duration_min,0)/earlier.length:null;
+  app.innerHTML=`<h2>Player report</h2>
+  <div class="hero"><h1 style="text-transform:capitalize">${esc(t.training_type)} session</h1><small>${fmtDate(t.training_date)}</small></div>
+  <div class="card">
+    <div class="kv"><span>Duration</span><b>${t.duration_min} min</b></div>
+    <div class="kv"><span>Shooting attempts</span><b>${t.shot_attempts??'–'}</b></div>
+    <div class="kv"><span>Successful shots</span><b>${t.shot_made??'–'}</b></div>
+    <div class="kv"><span>Shooting percentage</span><b class="num o" style="font-size:24px">${p!=null?p+'%':'–'}</b></div>
+  </div>
+  <div class="card"><h3>Historical comparison</h3><p style="margin-top:6px">${cmp}</p>
+  ${prevDur!=null?`<p style="margin-top:8px;color:var(--mute)">Average earlier duration: ${Math.round(prevDur)} min</p>`:''}</div>
+  <div class="card"><h3>Personal notes</h3><p style="margin-top:6px">${t.notes?esc(t.notes).replace(/\n/g,'<br>'):'<span style="color:var(--mute)">No notes for this session.</span>'}</p></div>
+  <button class="btn ghost" id="del">Delete this session</button>`;
+  $('#del').onclick=async()=>{
+    if(!confirm('Delete this training session? This cannot be undone.'))return;
+    const{error}=await sb.from('trainings').delete().eq('id',t.id);
+    if(error)return toast(error.message);
+    await load();toast('Session deleted');go('history');
+  };
+}
+
+/* ---------- Profile ---------- */
+function profileView(){
+  const p=prof||{};
+  app.innerHTML=`<h2>Player profile</h2><div class="card">
+  <label>Full name</label><input id="fn" value="${esc(p.full_name)}">
+  <div class="row"><div><label>Age</label><input id="age" type="number" inputmode="numeric" value="${p.age??''}"></div>
+  <div><label>Jersey number</label><input id="jn" type="number" inputmode="numeric" min="0" max="99" value="${p.jersey_number??''}"></div></div>
+  <label>Position</label><select id="pos"><option value="">Select</option>${['PG','SG','SF','PF','C'].map(x=>`<option ${p.position===x?'selected':''}>${x}</option>`).join('')}</select>
+  <label>Location</label><input id="loc" value="${esc(p.location)}" placeholder="Town / district">
+  <label>Club (optional)</label><input id="club" value="${esc(p.club)}" placeholder="Type your current club">
+  <label>Experience</label><input id="exp" value="${esc(p.experience)}" placeholder="e.g. 3 years school team">
+  <label>Introduction</label><textarea id="intro">${esc(p.introduction)}</textarea>
+  <button class="btn" id="save">Save profile</button><div id="msg" class="msg"></div></div>
+  <div class="card"><h3>Account</h3><p style="color:var(--mute);margin:4px 0">${esc(me.email)}</p>
+  <button class="btn ghost" id="pwr">Change password by email</button><button class="btn ghost" id="out">Log out</button></div>`;
+  $('#save').onclick=async()=>{
+    const name=$('#fn').value.trim();if(!name)return msg('Enter your name.');
+    const row={full_name:name,age:num($('#age').value),jersey_number:num($('#jn').value),position:$('#pos').value||null,location:$('#loc').value.trim()||null,club:$('#club').value.trim()||null,experience:$('#exp').value.trim()||null,introduction:$('#intro').value.trim()||null};
+    const{error}=await sb.from('profiles').update(row).eq('id',me.id);
+    if(error)return msg(error.message);
+    await load();toast('Profile saved');go('home');
+  };
+  $('#pwr').onclick=async()=>{const{error}=await sb.auth.resetPasswordForEmail(me.email,{redirectTo:location.origin+location.pathname});toast(error?error.message:'Reset link sent to your email')};
+  $('#out').onclick=()=>sb.auth.signOut();
+}
+
+/* ---------- Boot ---------- */
+sb.auth.onAuthStateChange((ev,s)=>{
+  setTimeout(async()=>{
+    if(ev==='PASSWORD_RECOVERY'){recovering=true;return resetView()}
+    if(recovering)return;
+    if(ev==='SIGNED_OUT'){me=null;prof=null;trs=[];return authView()}
+    if((ev==='SIGNED_IN'||ev==='INITIAL_SESSION')&&s&&!(me&&me.id===s.user.id))await start();
+    else if(ev==='INITIAL_SESSION'&&!s)authView();
+  },0);
+});
+</script>
+</body>
+</html>
