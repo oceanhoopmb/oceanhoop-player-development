@@ -44,6 +44,13 @@ nav button.on{color:var(--ball)}
 nav[hidden]{display:none}
 #toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%) translateY(20px);background:var(--foam);color:var(--ink);padding:10px 16px;border-radius:10px;font-weight:600;opacity:0;transition:.25s;pointer-events:none}
 #toast.on{opacity:1;transform:translateX(-50%)}
+.chips{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
+.chip{background:var(--ink);border:1px solid var(--line);color:var(--foam);border-radius:10px;padding:12px 0;font:600 16px Barlow,sans-serif;cursor:pointer}
+.timer{text-align:center;padding-top:40px}.timer .big{font-size:96px;line-height:1;margin:24px 0;color:var(--ball)}
+.heat{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;grid-template-rows:repeat(7,auto);gap:3px}
+.heat i{aspect-ratio:1;border-radius:3px;background:#16344A}
+.heat .l1{background:#1B6E7C}.heat .l2{background:#2BB3C9}.heat .l3{background:#F2924F}.heat .l4{background:#F26B21}
+.ava{width:72px;height:72px;border-radius:50%;background:var(--ink);border:2px solid var(--line);object-fit:cover;display:block;flex:none}
 @media(prefers-reduced-motion:reduce){#toast{transition:none}}
 </style>
 </head>
@@ -68,6 +75,25 @@ const fmtDate=d=>new Date(d+'T00:00:00').toLocaleDateString('en-GB',{day:'numeri
 const toast=m=>{const t=$('#toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2600)};
 const msg=(t,ok)=>{const m=$('#msg');if(m){m.textContent=t;m.className='msg'+(ok?' ok':'')}};
 const num=v=>v===''||v==null?null:Number(v);
+const ymd=d=>new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+let avaURL=null;
+async function loadAva(){avaURL=null;if(prof?.avatar_path){const{data}=await sb.storage.from('avatars').createSignedUrl(prof.avatar_path,3600);avaURL=data?.signedUrl||null}}
+const avaHTML=()=>avaURL?`<img class="ava" src="${avaURL}" alt="Profile photo">`:`<div class="ava" style="display:grid;place-items:center;font:700 30px 'Barlow Condensed'">${esc((prof?.full_name||'?')[0]).toUpperCase()}</div>`;
+async function upAva(f){
+  const b=await createImageBitmap(f),k=Math.min(1,480/Math.max(b.width,b.height));
+  const c=document.createElement('canvas');c.width=Math.round(b.width*k);c.height=Math.round(b.height*k);c.getContext('2d').drawImage(b,0,0,c.width,c.height);
+  const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.85)),path=me.id+'/avatar.jpg';
+  const{error}=await sb.storage.from('avatars').upload(path,blob,{upsert:true,contentType:'image/jpeg'});
+  if(error)throw error;return path;
+}
+function heatHTML(){
+  const by={};trs.filter(t=>t.status==='completed').forEach(t=>by[t.training_date]=(by[t.training_date]||0)+t.duration_min);
+  const now=new Date(),st=new Date(now);st.setDate(now.getDate()-now.getDay()-14*7);
+  let cells='',act=0,streak=0;
+  for(let d=new Date(st);d<=now;d.setDate(d.getDate()+1)){const k=ymd(d),m=by[k]||0;if(m)act++;cells+=`<i class="l${m?m<20?1:m<45?2:m<90?3:4:0}" title="${k}: ${m} min"></i>`}
+  for(let d=new Date(now);;d.setDate(d.getDate()-1)){if(by[ymd(d)])streak++;else if(streak||ymd(d)!==ymd(now))break}
+  return`<div class="card"><h3>Training calendar · 15 weeks</h3><div class="heat" style="margin-top:10px">${cells}</div><p style="color:var(--mute);font-size:14px;margin-top:8px">${act} active days · ${streak}-day streak</p></div>`;
+}
 
 /* ---------- Auth ---------- */
 function authView(mode='login'){
@@ -117,7 +143,7 @@ async function load(){
   const[p,t]=await Promise.all([
     sb.from('profiles').select('*').eq('id',me.id).single(),
     sb.from('trainings').select('*').eq('player_id',me.id).order('training_date',{ascending:false}).order('created_at',{ascending:false}).limit(500)]);
-  prof=p.data||{};trs=t.data||[];
+  prof=p.data||{};trs=t.data||[];await loadAva();
 }
 async function start(){
   const{data:{session}}=await sb.auth.getSession();
@@ -137,13 +163,13 @@ document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>go(b.dataset.v)
 function homeView(){
   const done=trs.filter(t=>t.status==='completed');
   const mins=done.reduce((a,t)=>a+t.duration_min,0);
-  const wk=new Date();wk.setDate(wk.getDate()-6);const wkS=wk.toISOString().slice(0,10);
+  const wk=new Date();wk.setDate(wk.getDate()-6);const wkS=ymd(wk);
   const week=done.filter(t=>t.training_date>=wkS).length;
   const A=done.reduce((a,t)=>a+(t.shot_attempts||0),0),M=done.reduce((a,t)=>a+(t.shot_made||0),0);
   const overall=A>0?(M/A*100).toFixed(1)+'%':'–';
   app.innerHTML=`
-  <div class="hero"><small>Welcome back</small><h1>${esc(prof.full_name||'Player')}</h1>
-  <small>${[prof.position,prof.jersey_number!=null?'#'+prof.jersey_number:'',prof.club].filter(Boolean).map(esc).join(' · ')||'Complete your profile to get started'}</small></div>
+  <div class="hero" style="display:flex;gap:14px;align-items:center">${avaHTML()}<div><small>Welcome back</small><h1>${esc(prof.full_name||'Player')}</h1>
+  <small>${[prof.position,prof.jersey_number!=null?'#'+prof.jersey_number:'',prof.club].filter(Boolean).map(esc).join(' · ')||'Complete your profile to get started'}</small></div></div>
   <button class="btn" style="margin:0 0 14px" id="start">Start new training</button>
   <div class="stats">
     <div class="stat"><div class="num o">${done.length}</div><span>Sessions</span></div>
@@ -151,23 +177,24 @@ function homeView(){
     <div class="stat"><div class="num">${week}</div><span>Sessions, last 7 days</span></div>
     <div class="stat"><div class="num">${overall}</div><span>Shooting overall</span></div>
   </div>
-  <h3>Recent training</h3><div style="margin-top:8px">${trs.length?trs.slice(0,3).map(itemHTML).join(''):'<div class="empty">No sessions yet. Log your first practice.</div>'}</div>`;
+  ${heatHTML()}<h3>Recent training</h3><div style="margin-top:8px">${trs.length?trs.slice(0,3).map(itemHTML).join(''):'<div class="empty">No sessions yet. Log your first practice.</div>'}</div>`;
   $('#start').onclick=()=>go('train');bindItems();
 }
 function itemHTML(t){const p=pct(t);return`<button class="item" data-id="${t.id}"><div><b>${esc(t.training_type)}</b><small>${fmtDate(t.training_date)} · ${t.duration_min} min</small></div><div class="num">${p!=null?p+'%':'›'}</div></button>`}
 function bindItems(){app.querySelectorAll('.item').forEach(b=>b.onclick=()=>go('report',b.dataset.id))}
 
 /* ---------- Train ---------- */
-function trainView(){
-  const today=new Date().toISOString().slice(0,10);
-  app.innerHTML=`<h2>New training</h2><div class="card">
+function trainView(pre){
+  const today=ymd(new Date());
+  app.innerHTML=`<h2>New training</h2><div class="card"><h3>Practice timer</h3><div class="chips">${[10,20,30,45].map(m=>`<button class="chip" data-m="${m}">${m} min</button>`).join('')}</div></div><div class="card">
   <div class="row"><div><label>Date</label><input id="d" type="date" value="${today}"></div>
-  <div><label>Duration (min)</label><input id="dur" type="number" inputmode="numeric" min="1" max="600" placeholder="60"></div></div>
+  <div><label>Duration (min)</label><input id="dur" type="number" inputmode="numeric" min="1" max="600" value="${pre||''}" placeholder="60"></div></div>
   <label>Type</label><select id="ty">${TYPES.map(t=>`<option value="${t}">${t[0].toUpperCase()+t.slice(1)}</option>`).join('')}</select>
   <div class="row"><div><label>Shot attempts</label><input id="a" type="number" inputmode="numeric" min="0" placeholder="optional"></div>
   <div><label>Shots made</label><input id="m" type="number" inputmode="numeric" min="0" placeholder="optional"></div></div>
   <label>Notes</label><textarea id="n" placeholder="What did you work on? How did it feel?"></textarea>
   <button class="btn" id="save">Save training</button><div id="msg" class="msg"></div></div>`;
+  app.querySelectorAll('.chip').forEach(b=>b.onclick=()=>timerView(+b.dataset.m));
   $('#save').onclick=async()=>{
     const dur=num($('#dur').value),a=num($('#a').value),m=num($('#m').value);
     if(!dur||dur<1)return msg('Enter how long you trained.');
@@ -179,6 +206,18 @@ function trainView(){
     if(error)return msg(error.message);
     await load();toast('Training saved');go('report',data.id);
   };
+}
+
+/* ---------- Timer ---------- */
+function timerView(m){
+  const st=Date.now(),total=m*60000,end=st+total;let wl=null,iv;
+  try{navigator.wakeLock?.request('screen').then(w=>wl=w).catch(()=>{})}catch(e){}
+  app.innerHTML=`<div class="timer"><h3>Practice in progress</h3><div class="num big" id="clk"></div><button class="btn" id="fin">Finish and log</button><button class="btn ghost" id="cx">Cancel</button></div>`;
+  const stop=()=>{clearInterval(iv);try{wl?.release()}catch(e){}};
+  const finish=()=>{stop();trainView(Math.max(1,Math.round((Math.min(Date.now(),end)-st)/60000)))};
+  const tick=()=>{if(!$('#clk'))return stop();const s=Math.ceil(Math.max(0,end-Date.now())/1000);$('#clk').textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');if(s<=0){navigator.vibrate?.([300,150,300]);finish()}};
+  iv=setInterval(tick,500);tick();
+  $('#fin').onclick=finish;$('#cx').onclick=()=>{stop();trainView()};
 }
 
 /* ---------- History ---------- */
@@ -220,12 +259,12 @@ function reportView(id){
 /* ---------- Profile ---------- */
 function profileView(){
   const p=prof||{};
-  app.innerHTML=`<h2>Player profile</h2><div class="card">
+  app.innerHTML=`<h2>Player profile</h2><div class="card"><div style="display:flex;gap:14px;align-items:center">${avaHTML()}<div style="flex:1"><label style="margin-top:0">Profile photo</label><input id="ph" type="file" accept="image/*"></div></div>
   <label>Full name</label><input id="fn" value="${esc(p.full_name)}">
   <div class="row"><div><label>Age</label><input id="age" type="number" inputmode="numeric" value="${p.age??''}"></div>
   <div><label>Jersey number</label><input id="jn" type="number" inputmode="numeric" min="0" max="99" value="${p.jersey_number??''}"></div></div>
   <label>Position</label><select id="pos"><option value="">Select</option>${['PG','SG','SF','PF','C'].map(x=>`<option ${p.position===x?'selected':''}>${x}</option>`).join('')}</select>
-  <label>Location</label><input id="loc" value="${esc(p.location)}" placeholder="Town / district">
+  <div class="row"><div><label>Height (cm)</label><input id="ht" type="number" inputmode="decimal" value="${p.height_cm??''}"></div><div><label>Weight (kg)</label><input id="wt" type="number" inputmode="decimal" value="${p.weight_kg??''}"></div></div><label>Location</label><input id="loc" value="${esc(p.location)}" placeholder="Town / district">
   <label>Club (optional)</label><input id="club" value="${esc(p.club)}" placeholder="Type your current club">
   <label>Experience</label><input id="exp" value="${esc(p.experience)}" placeholder="e.g. 3 years school team">
   <label>Introduction</label><textarea id="intro">${esc(p.introduction)}</textarea>
@@ -234,7 +273,9 @@ function profileView(){
   <button class="btn ghost" id="pwr">Change password by email</button><button class="btn ghost" id="out">Log out</button></div>`;
   $('#save').onclick=async()=>{
     const name=$('#fn').value.trim();if(!name)return msg('Enter your name.');
-    const row={full_name:name,age:num($('#age').value),jersey_number:num($('#jn').value),position:$('#pos').value||null,location:$('#loc').value.trim()||null,club:$('#club').value.trim()||null,experience:$('#exp').value.trim()||null,introduction:$('#intro').value.trim()||null};
+    let ap=p.avatar_path;const f=$('#ph').files[0];
+    if(f){try{ap=await upAva(f)}catch(e){return msg(e.message)}}
+    const row={avatar_path:ap,height_cm:num($('#ht').value),weight_kg:num($('#wt').value),full_name:name,age:num($('#age').value),jersey_number:num($('#jn').value),position:$('#pos').value||null,location:$('#loc').value.trim()||null,club:$('#club').value.trim()||null,experience:$('#exp').value.trim()||null,introduction:$('#intro').value.trim()||null};
     const{error}=await sb.from('profiles').update(row).eq('id',me.id);
     if(error)return msg(error.message);
     await load();toast('Profile saved');go('home');
